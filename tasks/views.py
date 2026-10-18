@@ -1,42 +1,56 @@
-from django.shortcuts import get_object_or_404
-from rest_framework import status
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from rest_framework import generics, mixins
 
 from .models import Task
 from .serializers import TaskSerializer
 
 
-@api_view(["GET", "POST"])
-def task_list(request):
-    if request.method == "GET":
-        serializer = TaskSerializer(Task.objects.all(), many=True)
-        return Response(serializer.data)
+class TaskListCreateView(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    generics.GenericAPIView,
+):
+    """Представление для получения списка задач и создания новой задачи."""
 
-    serializer = TaskSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+
+    def get(self, request, *args, **kwargs):
+        # list() сериализует queryset с many=True и возвращает список (200).
+        return self.list(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        # create() проверяет данные и сохраняет задачу (201 или ошибки 400).
+        return self.create(request, *args, **kwargs)
 
 
-@api_view(["GET", "PUT", "PATCH", "DELETE"])
-def task_detail(request, pk):
-    task = get_object_or_404(Task, pk=pk)
+class TaskDetailView(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    generics.GenericAPIView,
+):
+    """Представление для чтения, изменения и удаления одной задачи по pk."""
 
-    if request.method == "GET":
-        return Response(TaskSerializer(task).data)
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
 
-    if request.method == "DELETE":
-        task.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    def get(self, request, *args, **kwargs):
+        # retrieve() возвращает данные задачи (200); если ее нет, DRF ответит 404.
+        return self.retrieve(request, *args, **kwargs)
 
-    serializer = TaskSerializer(
-        task,
-        data=request.data,
-        partial=request.method == "PATCH",
-    )
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def put(self, request, *args, **kwargs):
+        # update() проверяет и полностью заменяет данные задачи (200 или 400).
+        return self.update(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        # partial_update() проверяет и сохраняет только переданные поля (200 или 400).
+        return self.partial_update(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        # destroy() удаляет задачу и отвечает без тела (204); если ее нет — 404.
+        return self.destroy(request, *args, **kwargs)
+
+
+# DRF формирует 400 для ошибок сериализатора и 404 для отсутствующего pk.
+# 3xx здесь не нужен: эти операции не перенаправляют клиента. Неожиданные ошибки
+# остаются 500 и обрабатываются общим обработчиком Django/DRF, а не маскируются здесь.

@@ -78,3 +78,45 @@ class TaskApiTests(APITestCase):
             delete_response.status_code, status.HTTP_204_NO_CONTENT
         )
         self.assertFalse(Task.objects.filter(pk=task.pk).exists())
+
+    def test_put_replaces_task(self):
+        task = Task.objects.create(title="Старая задача")
+        detail_url = reverse("task-detail", args=[task.pk])
+        replacement_data = {
+            "title": "Новая задача",
+            "description": "Обновленное описание",
+            "status": Task.Status.IN_PROGRESS,
+            "priority": 4,
+        }
+
+        response = self.client.put(detail_url, replacement_data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.title, replacement_data["title"])
+        self.assertEqual(task.description, replacement_data["description"])
+        self.assertEqual(task.status, Task.Status.IN_PROGRESS)
+        self.assertEqual(task.priority, 4)
+
+    def test_detail_methods_return_404_for_missing_task(self):
+        detail_url = reverse("task-detail", args=[99999])
+        request_data = {
+            "title": "Проверка задачи",
+            "description": "Тест",
+            "status": Task.Status.PENDING,
+            "priority": 3,
+        }
+        requests = (
+            (self.client.get, {}),
+            (self.client.put, {"data": request_data, "format": "json"}),
+            (
+                self.client.patch,
+                {"data": {"title": "Новое название"}, "format": "json"},
+            ),
+            (self.client.delete, {}),
+        )
+
+        for send_request, kwargs in requests:
+            with self.subTest(method=send_request.__name__):
+                response = send_request(detail_url, **kwargs)
+                self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
